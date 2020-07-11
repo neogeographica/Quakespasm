@@ -2109,7 +2109,7 @@ static void COM_Game_f (void)
 
 		if (*p2)
 		{
-			if (strcmp(p2,"-hipnotic") && strcmp(p2,"-rogue") && strcmp(p2,"-quoth")) {
+			if (strcmp(p2,"-hipnotic") && strcmp(p2,"-rogue") && strcmp(p2,"-quoth") && strcmp(p2,"-ad") && strcmp(p2,"-copper")) {
 				Con_Printf ("invalid mission pack argument to \"game\"\n");
 				return;
 			}
@@ -2261,6 +2261,10 @@ void COM_InitFilesystem (void) //johnfitz -- modified based on topaz's tutorial
 		COM_AddGameDirectory (com_basedir, "hipnotic");
 	if (COM_CheckParm ("-quoth"))
 		COM_AddGameDirectory (com_basedir, "quoth");
+	if (COM_CheckParm ("-ad"))
+		COM_AddGameDirectory (com_basedir, "ad");
+	if (COM_CheckParm ("-copper"))
+		COM_AddGameDirectory (com_basedir, "copper");
 
 
 	i = COM_CheckParm ("-game");
@@ -2274,6 +2278,8 @@ void COM_InitFilesystem (void) //johnfitz -- modified based on topaz's tutorial
 		if (COM_CheckParm ("-rogue") && !q_strcasecmp(p, "rogue")) p = NULL;
 		if (COM_CheckParm ("-hipnotic") && !q_strcasecmp(p, "hipnotic")) p = NULL;
 		if (COM_CheckParm ("-quoth") && !q_strcasecmp(p, "quoth")) p = NULL;
+		if (COM_CheckParm ("-ad") && !q_strcasecmp(p, "ad")) p = NULL;
+		if (COM_CheckParm ("-copper") && !q_strcasecmp(p, "copper")) p = NULL;
 		if (p != NULL) {
 			COM_AddGameDirectory (com_basedir, p);
 			// QuakeSpasm extension: treat '-game missionpack' as '-missionpack'
