@@ -1,0 +1,5 @@
+*.swp
+Linux/CodeBlocks/bin/
+Linux/CodeBlocks/obj/
+Linux/CodeBlocks/*.depend
+Linux/CodeBlocks/*.layout
