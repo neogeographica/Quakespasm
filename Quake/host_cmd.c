@@ -1073,11 +1073,10 @@ void Host_Savegame_f (void)
 	q_snprintf (name, sizeof(name), "%s/%s", com_gamedir, Cmd_Argv(1));
 	COM_AddExtension (name, ".sav", sizeof(name));
 
-	Con_Printf ("Saving game to %s...\n", name);
 	f = fopen (name, "w");
 	if (!f)
 	{
-		Con_Printf ("ERROR: couldn't open.\n");
+		Con_Printf ("ERROR: couldn't open %s\n", name);
 		return;
 	}
 
@@ -1108,7 +1107,7 @@ void Host_Savegame_f (void)
 		fflush (f);
 	}
 	fclose (f);
-	Con_Printf ("done.\n");
+	Con_Printf ("game saved\n");
 }
 
 
