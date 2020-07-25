@@ -2085,15 +2085,44 @@ _add_path:
 
 //==============================================================================
 //johnfitz -- dynamic gamedir stuff -- modified by QuakeSpasm team.
+//
+// game command has these valid forms:
+//   game
+//     print current gamedir (not basegame or missionpack code tho!)
+//   game gamedir
+//     no basegame
+//     special missionpack code only if gamedir=hipnotic/rogue/quoth
+//   game gamedir basegame
+//     specified basegame used
+//     special missionpack code only if basegame=hipnotic/rogue/quoth
+//   game gamedir -missionpack
+//     this is basically just a shortcut/convenience version of the form below
+//     missionpack is used for both basegame and missionpack code
+//   game gamedir basegame -missionpack
+//     the -quoth arg is not allowed here (unless basegame is also quoth)
+//     specified basegame used
+//     specified missionpack code used
 //==============================================================================
 void ExtraMaps_NewGame (void);
 static void COM_Game_f (void)
 {
+	if (Cmd_Argc() > 4)
+	{
+		Con_Printf ("Too many arguments to \"game\". Allowed arguments are:\n");
+		Con_Printf ("  first argument is gamedir\n");
+		Con_Printf ("  optional basegame argument\n");
+		Con_Printf ("  optional final missionpack flag: -hipnotic, -rogue, or -quoth\n");
+		return;
+	}
 	if (Cmd_Argc() > 1)
 	{
-		const char *p = Cmd_Argv(1);
-		const char *p2 = Cmd_Argv(2);
 		searchpath_t *search;
+
+		// For starters read the args in as if in full 3-args format; will
+		// massage these further below.
+		const char *pg = Cmd_Argv(1); // gamedir
+		const char *pbg = Cmd_Argv(2); // basegame
+		const char *pmp = Cmd_Argv(3); // missionpack-code (will strip leading dash)
 
 		if (!registered.value) //disable shareware quake
 		{
@@ -2101,44 +2130,83 @@ static void COM_Game_f (void)
 			return;
 		}
 
-		if (!*p || !strcmp(p, ".") || strstr(p, "..") || strstr(p, "/") || strstr(p, "\\") || strstr(p, ":"))
+		// Handle any special interpretation of the args.
+		switch (Cmd_Argc())
+		{
+		case 2: // game gamedir
+			// special missionpack code only if gamedir=hipnotic/rogue/quoth
+			if (!q_strcasecmp(pg,"hipnotic") || !q_strcasecmp(pg,"rogue") || !q_strcasecmp(pg,"quoth"))
+			{
+				pmp = pg;
+			}
+			break;
+		case 3: // game gamedir basegame  or  game gamedir -missionpack
+			if (pbg[0] != '-')
+			{
+				// game gamedir basegame
+				// special missionpack code only if basegame=hipnotic/rogue/quoth
+				if (!q_strcasecmp(pbg,"hipnotic") || !q_strcasecmp(pbg,"rogue") || !q_strcasecmp(pbg,"quoth"))
+				{
+					pmp = pbg;
+				}
+			}
+			else
+			{
+				// game gamedir -missionpack
+				// missionpack is used for both basegame and missionpack code
+				pbg++;
+				pmp = pbg;
+			}
+			break;
+		case 4: // game gamedir basegame -missionpack
+			if (pmp[0] == '-')
+			{
+				pmp++;
+			}
+			break;
+		}
+
+		// validation
+		if (!*pg || !strcmp(pg, ".") || strstr(pg, "..") || strstr(pg, "/") || strstr(pg, "\\") || strstr(pg, ":"))
 		{
 			Con_Printf ("gamedir should be a single directory name, not a path\n");
 			return;
 		}
-
-		if (*p2)
+		if (*pbg)
 		{
-			if (strcmp(p2,"-hipnotic") && strcmp(p2,"-rogue") && strcmp(p2,"-quoth")) {
-				Con_Printf ("invalid mission pack argument to \"game\"\n");
+			if (!strcmp(pbg, ".") || strstr(pbg, "..") || strstr(pbg, "/") || strstr(pbg, "\\") || strstr(pbg, ":"))
+			{
+				Con_Printf ("basegame should be a single directory name, not a path\n");
 				return;
 			}
-			if (!q_strcasecmp(p, GAMENAME)) {
-				Con_Printf ("no mission pack arguments to %s game\n", GAMENAME);
+			if (!q_strcasecmp(pg, GAMENAME))
+			{
+				Con_Printf ("no basegame or missionpack argument to %s game allowed\n", GAMENAME);
 				return;
 			}
 		}
-
-		if (!q_strcasecmp(p, COM_SkipPath(com_gamedir))) //no change
+		if (*pmp)
 		{
-			if (com_searchpaths->path_id > 1) { //current game not id1
-				if (*p2 && com_searchpaths->path_id == 2) {
-					// rely on QuakeSpasm extension treating '-game missionpack'
-					// as '-missionpack', otherwise would be a mess
-					if (!q_strcasecmp(p, &p2[1]))
-						goto _same;
-					Con_Printf("reloading game \"%s\" with \"%s\" support\n", p, &p2[1]);
-				}
-				else if (!*p2 && com_searchpaths->path_id > 2)
-					Con_Printf("reloading game \"%s\" without mission pack support\n", p);
-				else goto _same;
-			}
-			else { _same:
-				Con_Printf("\"game\" is already \"%s\"\n", COM_SkipPath(com_gamedir));
+			if (strcmp(pmp,"hipnotic") && strcmp(pmp,"rogue") && strcmp(pmp,"quoth")) {
+				Con_Printf ("invalid missionpack argument; must be -hipnotic, -rogue, or -quoth\n");
 				return;
 			}
 		}
+		if (strcmp(pbg,"quoth") && !strcmp(pmp,"quoth")) {
+			Con_Printf ("if basegame specified, -quoth mission pack argument not allowed\n");
+			return;
+		}
 
+		// The game command can change the search paths and the values for the
+		// hipnotic, rogue, and standard_quake flags. Rather than try to
+		// predict whether the command is going to change anything and bail
+		// out if not, we will just always go ahead and apply the command and
+		// reload stuff. Not worth optimizing for the rare case that someone
+		// enters a game command that changes nothing.
+
+		// Technically we could set com_modified false if we're just
+		// switching back to pure id1, but the game command isn't allowed in
+		// unregistered Quake anyway.
 		com_modified = true;
 
 		//Kill the server
@@ -2165,29 +2233,22 @@ static void COM_Game_f (void)
 		rogue = false;
 		standard_quake = true;
 
-		if (q_strcasecmp(p, GAMENAME)) //game is not id1
+		if (q_strcasecmp(pg, GAMENAME)) //game is not id1
 		{
-			if (*p2) {
-				COM_AddGameDirectory (com_basedir, &p2[1]);
-				standard_quake = false;
-				if (!strcmp(p2,"-hipnotic") || !strcmp(p2,"-quoth"))
-					hipnotic = true;
-				else if (!strcmp(p2,"-rogue"))
-					rogue = true;
-				if (q_strcasecmp(p, &p2[1])) //don't load twice
-					COM_AddGameDirectory (com_basedir, p);
+			if (*pbg) {
+				COM_AddGameDirectory (com_basedir, pbg);
+				if (q_strcasecmp(pg, pbg)) //don't load twice
+					COM_AddGameDirectory (com_basedir, pg);
 			}
 			else {
-				COM_AddGameDirectory (com_basedir, p);
-				// QuakeSpasm extension: treat '-game missionpack' as '-missionpack'
-				if (!q_strcasecmp(p,"hipnotic") || !q_strcasecmp(p,"quoth")) {
+				COM_AddGameDirectory (com_basedir, pg);
+			}
+			if (*pmp) {
+				standard_quake = false;
+				if (!strcmp(pmp,"hipnotic") || !strcmp(pmp,"quoth"))
 					hipnotic = true;
-					standard_quake = false;
-				}
-				else if (!q_strcasecmp(p,"rogue")) {
+				else if (!strcmp(pmp,"rogue"))
 					rogue = true;
-					standard_quake = false;
-				}
 			}
 		}
 		else // just update com_gamedir
@@ -2216,7 +2277,7 @@ static void COM_Game_f (void)
 		Cbuf_AddText ("exec quake.rc\n");
 		Cbuf_AddText ("vid_unlock\n");
 	}
-	else //Diplay the current gamedir
+	else //Display the current gamedir
 		Con_Printf("\"game\" is \"%s\"\n", COM_SkipPath(com_gamedir));
 }
 
@@ -2254,34 +2315,88 @@ void COM_InitFilesystem (void) //johnfitz -- modified based on topaz's tutorial
 	 * up to here upon a new game command. */
 	com_base_searchpaths = com_searchpaths;
 
-	// add mission pack requests (only one should be specified)
-	if (COM_CheckParm ("-rogue"))
-		COM_AddGameDirectory (com_basedir, "rogue");
-	if (COM_CheckParm ("-hipnotic"))
-		COM_AddGameDirectory (com_basedir, "hipnotic");
-	if (COM_CheckParm ("-quoth"))
-		COM_AddGameDirectory (com_basedir, "quoth");
+	// Do some missionpack arg validation. COM_InitArgv already set the
+	// rogue and hipnotic flags for us.
+	if (rogue && hipnotic)
+	{
+		Sys_Error ("-rogue can't be used at the same time as -hipnotic or -quoth\n");
+	}
 
-
+	// Get any game/basegame args.
 	i = COM_CheckParm ("-game");
+	j = COM_CheckParm ("-basegame");
+	char *pg = "";
+	char *pbg = "";
 	if (i && i < com_argc-1)
 	{
-		const char *p = com_argv[i + 1];
-		if (!*p || !strcmp(p, ".") || strstr(p, "..") || strstr(p, "/") || strstr(p, "\\") || strstr(p, ":"))
+		pg = com_argv[i + 1];
+		if (!*pg || !strcmp(pg, ".") || strstr(pg, "..") || strstr(pg, "/") || strstr(pg, "\\") || strstr(pg, ":"))
 			Sys_Error ("gamedir should be a single directory name, not a path\n");
 		com_modified = true;
-		// don't load mission packs twice
-		if (COM_CheckParm ("-rogue") && !q_strcasecmp(p, "rogue")) p = NULL;
-		if (COM_CheckParm ("-hipnotic") && !q_strcasecmp(p, "hipnotic")) p = NULL;
-		if (COM_CheckParm ("-quoth") && !q_strcasecmp(p, "quoth")) p = NULL;
-		if (p != NULL) {
-			COM_AddGameDirectory (com_basedir, p);
-			// QuakeSpasm extension: treat '-game missionpack' as '-missionpack'
-			if (!q_strcasecmp(p,"rogue")) {
+	}
+	if (j && j < com_argc-1)
+	{
+		pbg = com_argv[j + 1];
+		if (!*pbg || !strcmp(pbg, ".") || strstr(pbg, "..") || strstr(pbg, "/") || strstr(pbg, "\\") || strstr(pbg, ":"))
+			Sys_Error ("basegame should be a single directory name, not a path\n");
+		if (!*pg)
+		{
+			Sys_Error ("-game must be specified if -basegame is specified\n");
+		}
+		if (COM_CheckParm ("-quoth"))
+		{
+			Sys_Error ("-quoth not allowed if -basegame is specified\n");
+		}
+	}
+
+	// Similar logic as with the "game" command, we have these scenarios:
+	// * A missionpack arg adds a game directory if basegame is not specified.
+	// * -basegame adds a game directory. A hipnotic/rogue/quoth basegame also
+	//   sets missionpack code if missionpack was not specified.
+	// * -game adds a game directory. A hipnotic/rogue/quoth game also
+	//   sets missionpack code if neither basegame nor missionpack was specified.
+
+	// If no basegame, then any missionpack arg will specify the basegame.
+	if (!*pbg)
+	{
+		if (COM_CheckParm ("-rogue"))
+			pbg = "rogue";
+		if (COM_CheckParm ("-hipnotic"))
+			pbg = "hipnotic";
+		if (COM_CheckParm ("-quoth"))
+			pbg = "quoth";
+	}
+	// If there's a basegame now, add it as a gamedir. Also, if no missionpack
+	// arg has activated any missionpack code yet, the basegame can trigger
+	// that if it is hipnotic/rogue/quoth.
+	if (*pbg)
+	{
+		COM_AddGameDirectory (com_basedir, pbg);
+		if (standard_quake)
+		{
+			if (!q_strcasecmp(pbg,"rogue")) {
 				rogue = true;
 				standard_quake = false;
 			}
-			if (!q_strcasecmp(p,"hipnotic") || !q_strcasecmp(p,"quoth")) {
+			if (!q_strcasecmp(pbg,"hipnotic") || !q_strcasecmp(pbg,"quoth")) {
+				hipnotic = true;
+				standard_quake = false;
+			}
+		}
+	}
+	// Finally add any gamedir, unless it is the same as the basegame we just
+	// added. This can also trigger missionpack code if no basegame or
+	// missionpack arg was specified.
+	if (*pg && q_strcasecmp(pg,pbg))
+	{
+		COM_AddGameDirectory (com_basedir, pg);
+		if (standard_quake && !*pbg)
+		{
+			if (!q_strcasecmp(pg,"rogue")) {
+				rogue = true;
+				standard_quake = false;
+			}
+			if (!q_strcasecmp(pg,"hipnotic") || !q_strcasecmp(pg,"quoth")) {
 				hipnotic = true;
 				standard_quake = false;
 			}
